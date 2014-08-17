@@ -43,21 +43,14 @@ define('MAIL_SERVER','smtp.126.com');
 define('MAIL_PORT',25);
 define("MAIL_AUTH",true);
 define('MAIL_USERNAME','suconghou@126.com');
-define('MAIL_PASSWORD','11260sch45770');
+define('MAIL_PASSWORD','123456');
 define('MAIL_NAME','系统邮件');
 
 ///添加一个正则路由,数组第一个为控制器,第二个为方法,前面的将作为该方法的第一个实参,以此类推
 
-app::route('\/([A-Z0-9]{40})\.torrent',array('home','a'));
-app::route('\/page\/(\d{1,9})\.html',array('page','id'));
-app::route('\/read\/(\d{1,9})\.html',array('read','id'));
-app::route('\/(\d{1,9})\.html',array('home','id'));
-app::route('\/fm\/(\d{1,9}).fm',array('fm','id'));
-app::route('\/about',array('home','about'));
-
 //也可以添加自动加载,或者加载程序设置
 S('functions');
-S('class/curl');
+
 //配置完,可以启动啦
 app::start();
 

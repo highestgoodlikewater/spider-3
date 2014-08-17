@@ -12,7 +12,7 @@ class home extends base
 	}
 	function index()
 	{
-     	 V('mvc');
+     	V('qiniu/index');
      
 	}
 	function test()
