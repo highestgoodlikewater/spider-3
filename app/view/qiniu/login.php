@@ -21,7 +21,7 @@
                     <div class="logo"><a href="/">橘子时光</a></div>      
                 </div>
                 <div class="floatr header-right">
-                    <a class="login-link" href="/login">登陆</a>                
+                    <a class="login-link" href="/">返回</a>                
                 </div>
             </div>
         </div>
@@ -30,27 +30,28 @@
 	</header>
     <div id='wrapper'>
         <div class="content" id="main-page">
+
             <div class="full">
-                 <h1 class="main-title">简单,好用的在线日记</h1>
-                <div class="main-form">
-                    <input type="text" class="input" id="email" placeholder="你的邮箱"> 
-                    &nbsp;&nbsp;<button class="button">开始使用</button>
-                </div>
+                <h1 class="main-title">欢迎回到橘子时光</h1>
+               
+                 <div class="login-form">
+                     <p>
+                         <input type="text" class="input" placeholder="邮箱">
+                     </p>
+                     <p>
+                         <input type="text" class="input" placeholder="密码">
+                     </p>
+                     <div class="full">
+                         <div class="half">&nbsp;</div>
+                         <div class="half text-right"><a href="" class="alink">忘记密码?</a></div>
+                     </div>
+                     <p>
+                         <button id="login-btn" class="button">登陆</button>
+                     </p>
+                 </div>
             </div>
            
-            <div class="full" style="height:200px">
-                <div class="fourth"></div>
-                <div class="fourth"></div>
-                <div class="fourth"></div>
-            </div>
-            <div>
-                <h2 class="s-title">为什么大家喜欢橘子时光</h2>
-            </div>
-            <div class="full">
-                <div class="fourth"></div>
-                <div class="fourth"></div>
-                <div class="fourth"></div>
-            </div>
+            
         </div>
     </div>
 	<footer>

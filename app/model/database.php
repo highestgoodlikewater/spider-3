@@ -1,9 +1,10 @@
 <?php
 /**
 *  数据库基础扩展,继承此类以获得灵活的数据操纵
-*  包含自动缓存系统,缓存系统需cache.class.php支持
+*  提供数据库基本操作,但没有限定表名,字段名等
+*  包含自动缓存系统,缓存系统需cache.class.php支持,也是三种缓存类型
 *  四种基本数据访问
-*  selectById($table,$id)
+*  selectById($table,$id,$column='*')
 *  deleteById($table,$id)
 *  updateById($table,$id,$data)
 *  insertData($table,$data) 
@@ -16,8 +17,8 @@
 *  multUpdate($table,$idArr)
 *  multDelete($table,$idArr)
 *  单字段自增,自减
-*  incrById($table,$column,$id)
-*  decrById($table,$column,$id)
+*  incrById($table,$column,$id,$num=1)
+*  decrById($table,$column,$id,$num=1)
 *  
 *  数据列表
 *  getList($table,$column,$page=1,$order='desc',$per=20,$where=null)
@@ -28,7 +29,7 @@
 *  $db->cache(0)->查询操作, 跳过缓存,取真实数据(默认)
 *  $db->cache(0/1,60); 设置缓存有效期, 
 *
-*  继承db的类,请不要执行parent::__construct(); 他留给手动实例化的
+*  该类只提供继承,不能直接实例化
 */
 abstract class database extends db
 {
@@ -74,9 +75,9 @@ abstract class database extends db
 	/**
 	 * 根据ID获得某个表的一行数据
 	 */
-	function selectById($table,$id)
+	function selectById($table,$id,$column='*')
 	{
-		$sql="SELECT * FROM `{$table}` WHERE id={$id} ";
+		$sql="SELECT {$column} FROM `{$table}` WHERE id='{$id}' ";
 		if(self::$use)
 		{
 			$key=md5($table.$id);
@@ -151,7 +152,7 @@ abstract class database extends db
 	}
 	// end 四种基本类型
 	///缓存结果不能更新直到过期
-	function selectWhere($table,$where=null)
+	function selectWhere($table,$where=null,$column='*')
 	{	
 		if($where)
 		{
@@ -159,8 +160,9 @@ abstract class database extends db
 			{
 				$k[]='(`'.$key.'`="'.$value.'")';
 			}
+			$strk=null;
 			$strk.=implode(" AND ",$k);
-			$sql="SELECT * FROM `{$table}` WHERE ({$strk}) ";
+			$sql="SELECT {$column} FROM `{$table}` WHERE ({$strk}) ";
 			if(self::$use)
 			{
 				$key=md5($table,$strk);
@@ -183,7 +185,7 @@ abstract class database extends db
 		}
 		else
 		{
-			$sql="SELECT * FROM `{$table}` ";
+			$sql="SELECT {$column} FROM `{$table}` ";
 			return $this->getData($sql);
 		}
 		
@@ -245,12 +247,24 @@ abstract class database extends db
 	}
 	// end 三种基本条件
 
+	function multInsert($table,$dataArr)
+	{
+
+	}
+	function multUpdate($table,$idArr)
+	{
+
+	}
+	function multDelete($table,$idArr)
+	{
+
+	}
 	/**
 	 * 将某个表的某个字段自增1
 	 */
-	function incrById($table,$column,$id)
+	function incrById($table,$column,$id,$num=1)
 	{
-		$sql="UPDATE `{$table}` SET {$column}={$column}+1 WHERE id={$id} ";
+		$sql="UPDATE `{$table}` SET {$column}={$column}+{$num} WHERE id={$id} ";
 		if(self::$use)
 		{
 			$key=md5($table.$id);
@@ -262,9 +276,9 @@ abstract class database extends db
 	/**
 	 * 将某个表的某个字段减去1
 	 */
-	function decrById($table,$column,$id)
+	function decrById($table,$column,$id,$num=1)
 	{
-		$sql="UPDATE `{$table}` SET {$column}={$column}-1 WHERE id={$id} ";
+		$sql="UPDATE `{$table}` SET {$column}={$column}-{$num} WHERE id={$id} ";
 		if(self::$use)
 		{
 			$key=md5($table.$id);
@@ -275,7 +289,7 @@ abstract class database extends db
 	/**
 	 * 获得某个表的按某字段排序的分页内容以及总页数,不缓存
 	 */
-	function getList($table,$column,$page=1,$order='desc',$per=20,$where=null)
+	function getList($table,$page=1,$where=null,$column='id',$order='desc',$per=20,$selectCloumn='*')
 	{
 		$offset=($page-1)*$per;
 		if(is_array($where))
@@ -286,68 +300,23 @@ abstract class database extends db
 				$k[]='(`'.$key.'`="'.$value.'")';
 
 			}
+			$strk=null;
 			$strk.=implode(" AND ",$k);
-			$sql="SELECT * FROM `{$table}` WHERE  ({$strk})  ORDER BY {$column} {$order} LIMIT {$offset},{$per} ";
+			$sql="SELECT {$selectCloumn} FROM `{$table}` WHERE  ({$strk})  ORDER BY {$column} {$order} LIMIT {$offset},{$per} ";
 			$list=$this->getData($sql);
 			$sql="SELECT COUNT(1) FROM `{$table}` WHERE  ({$strk})  ";
 			$page=ceil($this->getVar($sql)/$per);
 		}
 		else
 		{
-			$sql="SELECT * FROM `{$table}` ORDER BY {$column} {$order} LIMIT {$offset},{$per} ";
+			$sql="SELECT {$selectCloumn} FROM `{$table}` ORDER BY {$column} {$order} LIMIT {$offset},{$per} ";
 			$list=$this->getData($sql);
 			$sql="SELECT COUNT(1) FROM `{$table}` ";
 			$page=ceil($this->getVar($sql)/$per);
 		}
 		return array('list'=>$list,'page'=>$page);
 	}
-	/**
-	 * 只有set,会触发__destruct里的sql,因此要监控他
-	 * set 会保护table ,id ,他们不会修改
-	 */
-	function __set($key,$val)
-	{
-		if(isset($this->data[$this->table][$key])) //存在这个字段
-		{
-			$this->data[$this->table][$key]=$val;
-			$this->update[$key]=$val;
-		}
-		else //不存在的字段忽略
-		{ 
-			return false;
-		}
-	}
-	function __get($key)
-	{
-		if(isset($this->data[$this->table][$key]))
-		{
-			return $this->data[$this->table][$key];
-		}
-		return null;
-
-	}
-	function __isset($key)
-	{
-		return isset($this->data[$this->table][$key]);
-
-	}
-	function __unset($key)
-	{
-		unset($this->data[$this->table][$key]);
-
-	}
-	/**
-	 * DB被实例化,每次结束时检查数据模型改动,DB的实例化用于数据模型其他操作请继承DB
-	 */
-	function __destruct()
-	{
-		if($this->update)
-		{
-			return $this->updateById($this->table,$this->id,$this->update);
-		}
-	}
-
-
+	
 
 }
 // end class database

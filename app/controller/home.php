@@ -2,6 +2,8 @@
 
 /**
 * qiniu DEMO
+* 管理七牛文件
+* 
 */
 class home extends base
 {
@@ -15,6 +17,10 @@ class home extends base
      	V('qiniu/index');
      
 	}
+	function page($page)
+	{
+		V('qiniu/'.$page);
+	}
 	function test()
 	{
 		dump(Request::server());
@@ -22,7 +28,8 @@ class home extends base
 	function hello2()
 	{
 
-    	
+		
+  	  	
 	}
 
 

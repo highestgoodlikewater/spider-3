@@ -8,8 +8,6 @@ define('VIEW_PATH',APP_PATH.'view/');//视图路径
 define('CONTROLLER_PATH',APP_PATH.'controller/'); //控制器路径
 require LIB_PATH.'core.php';//载入核心
 
-define('CLI',1);//在CLI模式下也能运行
-
 define('MAX_URL_LENGTH',200); //URL最大长度限制
 define('REGEX_ROUTER',1);  //是否启用正则路由
 
@@ -20,7 +18,7 @@ define('GZIP',1);  //是否开启GZIP,在SAE若出错请关闭
 //0不自动记录错误日志,非敏感模式,不显示错误详情,建议上线使用
 //1自动记录错误日志,非敏感模式,不显示错误详情,建议测试时或线上DEBUG使用
 //2自动记录错误日志,敏感模式,显示错误详情,建议开发时使用
-define('DEBUG',0);
+define('DEBUG',2);
 
 //自定义404,500路由,若设定请确保必须存在,系统定义Error404,Error500
 define('ERROR_PAGE_404',''); //Error404
@@ -47,6 +45,10 @@ define('MAIL_PASSWORD','123456');
 define('MAIL_NAME','系统邮件');
 
 ///添加一个正则路由,数组第一个为控制器,第二个为方法,前面的将作为该方法的第一个实参,以此类推
+
+app::route('\/login\/?',array('home','page','login'));
+app::route('\/about\/?',array('home','page','about'));
+app::route('\/feedback\/?',array('home','page','feedback'));
 
 //也可以添加自动加载,或者加载程序设置
 S('functions');

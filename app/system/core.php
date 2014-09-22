@@ -1,12 +1,11 @@
-<?
+<?php
 
 /**
  * @author suconghou 
  * @blog http://blog.suconghou.cn
  * @link http://github.com/suconghou/mvc
- * @version 1.5
+ * @version 1.7
  */
-
 /**
 * APP 主要控制类
 */
@@ -30,15 +29,14 @@ class app
 			set_error_handler('Error',2);///异常处理
 			error_reporting(0);
 		}
-		CLI&&self::runCli();
+		defined('STDIN')&&self::runCli();
 		if(!isset($GLOBALS['APP']['CLI']))
 		{
-			$router=self::init();
-			self::process($router);
+			self::process(self::init());
 		}
 	}
 	/**
-	 * 内部转向,可以治指定一个方法,控制器保持原有的
+	 * 内部转向,可以指定一个方法,控制器保持原有的
 	 */
 	public static function run($router)
 	{
@@ -93,18 +91,25 @@ class app
 
 	}
 	/**
-	 * 添加正则路由,参数一正则,参数二路由数组,参数三强制类内寻找
+	 * 正则路由,参数一正则,参数二数组形式的路由表或者回调函数
 	 */
-	public static function route($regex,$arr,$in=false)
+	public static function route($regex,$arr)
 	{
 		if(REGEX_ROUTER)//启用了正则路由
 		{	
-			is_array($arr)||Error('500','Router need to be an array ! ');
-			$GLOBALS['APP']['regex_router'][]=array($regex,$arr);
-			if($in)
+			if(is_array($arr))
 			{
-				$GLOBALS['APP']['regex_router'][$regex]=$arr[0];
+				$GLOBALS['APP']['regex_router'][]=array($regex,$arr);
 			}
+			else if(is_object($arr)) //回调函数
+			{
+				$GLOBALS['APP']['regex_router'][$regex]=$arr;
+			}
+			else
+			{
+				Error(404,'error');
+			}
+
 		}
 	}
 	public static function log($msg)
@@ -128,20 +133,24 @@ class app
 	 */
 	private static function regexRouter($uri)
 	{
-		if(isset($GLOBALS['APP']['regex_router'][0]))
+		if(!empty($GLOBALS['APP']['regex_router']))//存在正则路由
 		{
-			foreach ($GLOBALS['APP']['regex_router'] as $regex)
+			foreach ($GLOBALS['APP']['regex_router'] as $key=>$item)
 			{
-				if(preg_match('/^'.$regex[0].'$/', $uri,$matches))
+				$regex=is_array($item)?$item[0]:$key;
+				if(preg_match('/^'.$regex.'$/', $uri,$matches)) //能够匹配正则路由
 				{
-					unset($matches[0]);
-					$router=array_merge($regex[1],$matches);
-					$GLOBALS['APP']['regex']['using']=$regex[0]; //命中的正则
-					if(isset($GLOBALS['APP']['regex_router'][$regex[0]]))
+					$url=$matches[0];
+					unset($matches[0]); //这个为输入的url
+					if(is_object($item)) 
 					{
-						$GLOBALS['APP']['regex']['lib']=$GLOBALS['APP']['regex_router'][$regex[0]]; //强制lib寻找
+						return array_merge(array($url,$item),$matches);
 					}
-					return $router;
+					else //算出控制器
+					{
+						$router=array_merge($item[1],$matches);
+						return $router;
+					}
 				}
 			}
 		}
@@ -165,21 +174,21 @@ class app
 	 */
 	private static function runCli()
 	{
-		if(substr(php_sapi_name(), 0, 3) == 'cli') //在CLI模式下
+		if(isset($GLOBALS['argc'])&&$GLOBALS['argc']>1)
 		{
-			if(!isset($GLOBALS['argc']))return;
-			set_time_limit(0);
-			if($GLOBALS['argc']>1)
-			{
-				$GLOBALS['APP']['CLI']=true;
-	    		foreach ($GLOBALS['argv'] as $key=>$uri)
-	    		{
-	    			if($key==0)continue;
-	    			$GLOBALS['APP']['router'][]=$uri;
-	    		}
-	      		self::runRouter($GLOBALS['APP']['router']);
-	      	}
-		}	
+			$GLOBALS['APP']['CLI']=true;
+    		foreach ($GLOBALS['argv'] as $key=>$uri)
+    		{
+    			if($key==0)continue;
+    			$GLOBALS['APP']['router'][]=$uri;
+    		}
+      		self::runRouter($GLOBALS['APP']['router']);
+      	}
+      	else
+      	{
+      		exit('CLI Mode Need controller and action !');
+      	}
+		
 
 	}
 	/**
@@ -187,7 +196,14 @@ class app
 	 */
 	private static function process($router)
 	{
-		$hash=APP_PATH.'cache/'.md5(implode('-',$router)).'.html';///缓存hash
+		if(is_object($router[1])) //含有回调函数缓存hash
+		{
+			$hash=APP_PATH.'cache/'.($router[0]).'.html';
+		}
+		else //普通路由缓存hash
+		{
+			$hash=APP_PATH.'cache/'.(implode('-',$router)).'.html';
+		}
 		if (is_file($hash))//存在缓存文件
 		{
 			$expires_time=filemtime($hash);
@@ -195,16 +211,15 @@ class app
 			{		 
 				if(isset($_SERVER['HTTP_IF_MODIFIED_SINCE']))
 				{
-					http_response_code(304);
-					exit;  
+					exit(http_response_code(304));  
 				}
 				else
 				{	
 					header('Last-Modified: ' . gmdate('D, d M y H:i:s',time()). ' GMT');   
-					exit(file_get_contents($hash));
+					exit(readfile($hash));
 				}
 			}
-			else ///已过期
+			else //缓存已过期
 			{
 				unlink($hash);  ///删除过期文件
 				self::runRouter($router);
@@ -217,46 +232,47 @@ class app
 
 	}
 
-	private static function  runRouter($router)
+	public static function  runRouter($router)
 	{
-		if(isset($GLOBALS['APP']['regex']['lib'])) //lib 中寻找http handler
+		if(count($router)==1)
 		{
-			$lib=$GLOBALS['APP']['regex']['lib'];
-			if(isset($GLOBALS['APP']['lib'][$lib])&&is_object($GLOBALS['APP']['lib'][$lib]))
-			{
-					method_exists($GLOBALS['APP']['lib'][$lib],$router[1])||Error('404','Regex http handler '.$GLOBALS['APP']['regex']['lib'].' does not contain method '.$router[1]);
-					unset($GLOBALS['APP']['regex']);
-					return call_user_func_array(array($GLOBALS['APP']['lib'][$lib],$router[1]), array_slice($router,2));//传入参数
-			}
-			else
-			{
-				Error('404','Not Found regex http handler '.$GLOBALS['APP']['regex']['lib'].' in loaded libraries !');
-			}
+			$router[]=DEFAULT_ACTION;
+		}
+		$GLOBALS['APP']['router']=$router;
+		if(is_object($router[1]))//含有回调的
+		{
+			return call_user_func_array($router[1],array_slice($router,2));
 		}
 		else
 		{
 			app::run($router);
 		}
+		
 	}
 	/**
 	 * 初始化相关
 	 */
 	private static function init()
 	{
-	
-		isset($_SERVER['REQUEST_URI'])||exit('Use CLI Please Enable CLI Mode');
 		(strlen($_SERVER['REQUEST_URI'])>MAX_URL_LENGTH)&&Error('500','Request url too long ! ');
 		list($uri)=explode('?',$_SERVER['REQUEST_URI']);
 		$uri=='/favicon.ico'&&die;
-		if(substr($uri,0,10)=='/index.php')
+		if(strpos($uri, $_SERVER['SCRIPT_NAME'])!==FALSE)
 		{
-			$uri=substr($uri,10);
+			$uri=str_replace($_SERVER['SCRIPT_NAME'], null, $uri);
 		}
 		if(REGEX_ROUTER)
 		{
 			$router=self::regexRouter($uri);
-			$router||($router=self::commonRouter($uri));
 			unset($GLOBALS['APP']['regex_router']);
+			if($router)
+			{
+				return $router;
+			}
+			else
+			{
+				$router=self::commonRouter($uri);
+			}
 		}
 		else
 		{
@@ -288,7 +304,6 @@ class app
 				Error('404','Error action name ! ');
 			}
 		}
-		$GLOBALS['APP']['router']=$router;
 		return $router;
 	}
 
@@ -306,7 +321,7 @@ class app
 		}
 		else
 		{
-			$url=$router;
+			$url=Validate::url($router)?$router:Error(500,'Async needs a  url or an array ');
 		}
 		if($curl)
 		{
@@ -316,7 +331,7 @@ class app
 				return file_get_contents($url);			
 			}
 			$ch = curl_init(); 
-			$curl_opt = array(CURLOPT_URL=>$url,CURLOPT_SSL_VERIFYPEER=>0,CURLOPT_TIMEOUT=>1,
+			$curl_opt = array(CURLOPT_URL=>$url,CURLOPT_SSL_VERIFYPEER=>0,CURLOPT_TIMEOUT_MS=>1,CURLOPT_NOSIGNAL=>1,
 								CURLOPT_HEADER=>0,CURLOPT_NOBODY=>1,CURLOPT_RETURNTRANSFER=>1);
 			curl_setopt_array($ch, $curl_opt);
 			curl_exec($ch);
@@ -493,8 +508,8 @@ function S($lib,$param=null)
 		}
 	}
 }
-//加载视图
-function V($view,$data=null)
+//加载视图,传递参数,设置缓存
+function V($view,$data=array(),$fileCacheMin=0)
 {
 	if(defined('APP_TIME_SPEND'))
 	{
@@ -509,9 +524,14 @@ function V($view,$data=null)
 		define('APP_TIME_SPEND',round((microtime(true)-APP_START_TIME),4));//耗时
 		define('APP_MEMORY_SPEND',byteFormat(memory_get_usage()-APP_START_MEMORY));
 		require $view_file;
+		if($fileCacheMin)
+		{
+			$GLOBALS['APP']['cache']['time']=$fileCacheMin*60;
+			$GLOBALS['APP']['cache']['file']=true;
+		}
 		if(isset($GLOBALS['APP']['cache']))//启用了缓存
 		{
-			$expires_time=time()+$GLOBALS['APP']['cache']['time'];
+			$expires_time=intval(time()+$GLOBALS['APP']['cache']['time']);
 			if($GLOBALS['APP']['cache']['file'])//生成文件缓存
 			{
 				$contents=ob_get_contents();
@@ -532,16 +552,12 @@ function V($view,$data=null)
 				ob_end_flush();
 				flush();
 			}
-			
 		}
 		else
 		{
-
 			ob_end_flush();
 			flush();
 		}
-		
-			
 	}
 	else
 	{
@@ -550,39 +566,38 @@ function V($view,$data=null)
 
 }
 //缓存,第一个参数为缓存时间,第二个为是否文件缓存
-function C($time,$file=null)
+function C($time,$file=false)
 {
-	$cache['time']=$time*60;
-	$cache['file']=$file;
-	$GLOBALS['APP']['cache']=&$cache;
-	if(!$file)///使用了http缓存,在此处捕获缓存
-	{
-		$expires_time=time()+$GLOBALS['APP']['cache']['time'];
-		$last_expire = isset($_SERVER['HTTP_IF_MODIFIED_SINCE']) ? $_SERVER['HTTP_IF_MODIFIED_SINCE'] : 0;
-		if($last_expire)
-		{	
-			if((strtotime($last_expire)+$cache['time'])>time()) //命中缓存
-			{
-				http_response_code(304);	
-				die;  
-			}
-		}
-		else
+	$GLOBALS['APP']['cache']['time']=$time*60;
+	$GLOBALS['APP']['cache']['file']=$file;
+	///使用了http缓存,在此处捕获缓存
+	$expires_time=intval(time()+$GLOBALS['APP']['cache']['time']);
+	$last_expire = Request::server('HTTP_IF_MODIFIED_SINCE',0);
+	if($last_expire)
+	{	
+		if((strtotime($last_expire)+$GLOBALS['APP']['cache']['time'])>time()) //命中缓存
 		{
-			header("Expires: ".gmdate("D, d M Y H:i:s", $expires_time)." GMT");
-			header("Cache-Control: max-age=".$GLOBALS['APP']['cache']['time']);
-			header('Last-Modified: ' . gmdate('D, d M y H:i:s',time()). ' GMT'); 
+			exit(http_response_code(304));	
 		}
-
 	}
+	else
+	{
+		header("Expires: ".gmdate("D, d M Y H:i:s", $expires_time)." GMT");
+		header("Cache-Control: max-age=".$GLOBALS['APP']['cache']['time']);
+		header('Last-Modified: ' . gmdate('D, d M y H:i:s',time()). ' GMT'); 
+	}
+
 }
 
-function template($file)///加载模版
+function template($file,$data=array())///加载模版
 {
 	$file=VIEW_PATH.$file.'.php';
 	if(is_file($file))
 	{
+		is_array($data)||empty($data)||Error('500','param to view '.$file.' show be an array');
+		empty($data)||extract($data);
 		include $file;
+		flush();
 	}
 	else
 	{
@@ -681,16 +696,51 @@ class Request
 			return $data;
 		}
 	}
-	public static function info()
+	//获取http请求正文,默认当做json处理
+	public static function input($key=null,$default=null,$json=true)
 	{
-		$data['ip']=self::getIp();
+		$str=file_get_contents('php://input');
+		if($json)
+		{
+			$data=json_decode($str,true);
+		}
+		else
+		{
+			parse_str($str,$data);
+		}
+		if($key)
+		{
+			return isset($data[$key])?$data[$key]:$default;
+		}
+		return $data;
+	}
+	public static function info($key=null,$default=null)
+	{
+		$data['ip']=self::ip();
 		$data['ajax']=self::isAjax();
 		$data['ua']=self::ua();
 		$data['refer']=self::refer();
+		if($key) return isset($data[$key])?$data[$key]:$default;
 		return $data;
 	}
+	public static function serverInfo($key=null,$default=null)
+	{
+		$info['server_ip']=gethostbyname(self::getVar('server',"SERVER_NAME"));///服务器IP
+        $info['max_exectime']=ini_get('max_execution_time');//最大执行时间
+        $info['max_upload']=ini_get('file_uploads')?ini_get('upload_max_filesize'):0;///最大上传
+        $info['php_vision']=PHP_VERSION;////php版本
+        $info['os']=PHP_OS;///操作系统类型
+        $info['run_mode']=php_sapi_name();//php 运行方式
+        $info['post_max_size']=ini_get('post_max_size');
+		if($key)
+		{
+			return isset($info[$key])?$info[$key]:$default;
+		}
+		return $info;
+
+	}
 	/**
-	 * 默认去除html标签,去除空格
+	 * 默认普通过滤,去除html标签,去除空格
 	 * $type='1' 去除中文
 	 * $type=''
 	 * $type=''
@@ -700,7 +750,7 @@ class Request
 	{
 		if(is_null($type))
 		{
-			return trim(htmlentities(strip_tags($val)));
+			return trim((strip_tags($val)));
 		}
 		else
 		{
@@ -716,11 +766,11 @@ class Request
 					$out=$val;
 					break;
 			}
-			return $all?trim(htmlentities(strip_tags($out))):$out;
+			return $all?trim(strip_tags($out)):$out;
 		}
 
 	}
-	private static function getIp()
+	public static function ip()
 	{
 		if ($ip=self::getVar('server','HTTP_X_FORWARDED_FOR'))
 			return $ip;
@@ -737,15 +787,23 @@ class Request
 		else return null;
 
 	}
-	private static function isAjax()
+	public static function isCli()
+	{
+		return isset($GLOBALS['APP']['CLI']);
+	}
+	public static function isAjax()
 	{
 		return self::getVar('server','HTTP_X_REQUESTED_WITH')=='XMLHttpRequest';
 	}
-	private static function ua()
+	public static function isPjax()
+	{
+        return array_key_exists('HTTP_X_PJAX', $_SERVER) && $_SERVER['HTTP_X_PJAX'];
+    }
+	public static function ua()
 	{
 		return self::getVar('server','HTTP_USER_AGENT');
 	}
-	private static function refer()
+	public static function refer()
 	{
 		return self::getvar('server','HTTP_REFERER');
 	}
@@ -766,7 +824,9 @@ class Request
 				return isset($_SERVER[$var])?self::clean($_SERVER[$var]):$default;
 				break;
 			case 'session': ///此处为获取session的方式
-				return isset($_SESSION[$var])?$_SESSION[$var]:$default;
+				$session=isset($_SESSION[$var])?$_SESSION[$var]:$default;
+				session_write_close();
+				return $session;
 				break;
 			default:
 				return false;
@@ -782,26 +842,183 @@ class Request
 class Validate
 {
 	private static $rule;
+	private static $msg;
+	private static $data;
 	/**
-	 * 按照先前的规则校验
+	 * 按照先前的规则校验,校验完,清除本次校验规则以待下次校验
 	 */
 	public static function check($data)
 	{
-		foreach (self::$rule as $item)
+		self::$data=$data;
+		if(empty(self::$rule))return false;
+		foreach (self::$rule as $key=>$rule) //遍历所有规则,得到字段,规则,规则可以为空
 		{
-			list($key,$rule)=$item;
-			//TODO 设计规则
-			var_dump($key,$rule);
+			//1.必须字段检测
+			$ret=self::requireFilter($key); //数据中必须存在该字段
+			if($ret['code']==0) //必须性监测通过
+			{	
+				if(!empty($rule[0])) //设定了规则//2.解析规则
+				{
+					foreach ($rule as  $v) //$v 规则关键字
+					{
+						if(preg_match('/^\/.*\/$/',$v)) //正则规则
+						{
+							if(!preg_match($v, self::$data[$key]))
+							return self::destruct(array('code'=>-1,'msg'=>self::getErrMsg($key,$v)));
+						}
+						else if(stripos($v,'=')) //含有变量的规则
+						{
+							$ret=self::mixedFilter($key,explode('=', $v));
+							if($ret['code']!=0) return self::destruct($ret);
+						}
+						else //普通规则
+						{
+							$ret=self::singleFilter($key,$v);
+							if($ret['code']!=0)
+							{
+								return self::destruct($ret);
 
+							} 
+						}
+					}
+				}
+
+			}
+			else
+			{
+				return self::destruct($ret);
+			}
 		}
-		
+		return self::destruct(array('code'=>0));
+	}
+	/**
+	 * 必须字段检测
+	 */
+	private static function requireFilter($key)
+	{
+		if(isset(self::$data[$key])&&!empty(self::$data[$key]))
+		{
+			return array('code'=>0);
+		}
+		else
+		{
+			$err=self::getErrMsg($key,null);
+			return array('code'=>-1,'msg'=>$err);
+		}
+
+	}
+	private static function lengthFilter()
+	{
+
+	}
+	private static function mixedFilter($key,$arr)
+	{
+		$msg=self::getErrMsg($key,$arr[0].'='.$arr[1]);
+		switch ($arr[0])
+		{
+			case 'min-length':
+				if(strlen(self::$data[$key])<$arr[1])
+				{
+					return array('code'=>-1,'msg'=>$msg);
+				}
+				break;
+			case 'max-length':
+				if(strlen(self::$data[$key])>$arr[1])
+				{
+					return array('code'=>-2,'msg'=>$msg);
+				}
+				break;
+			case 'eq':
+				if(self::$data[$key]!=$arr[1])
+				{
+					return array('code'=>-3,'msg'=>$msg);
+				}
+				break;
+			default:
+				return array('code'=>-5,'msg'=>'Error Rule');
+				break;
+		}
+		return array('code'=>0);
+	}
+	private static function singleFilter($key,$rule)
+	{
+		$msg=self::getErrMsg($key,$rule);
+		$data=self::$data[$key];
+		switch ($rule)
+		{
+			case 'email':
+				if(!self::email($data)) return array('code'=>-1,'msg'=>$msg);
+				break;
+			case 'username':
+				if(!self::username($data)) return array('code'=>-2,'msg'=>$msg);
+				break;
+			case 'password':
+				if(!self::password($data)) return array('code'=>-3,'msg'=>$msg);
+				break;
+			case 'url':
+				if(!self::url($data)) return array('code'=>-4,'msg'=>$msg);
+				break;
+			case 'tel':
+				if(!self::tel($data)) return array('code'=>-5,'msg'=>$msg);
+				break;
+			case 'ip':
+				if(!self::ip($data)) return array('code'=>-6,'msg'=>$msg);
+				break;
+			case 'idcard':
+				if(!self::idcard($data)) return array('code'=>-7,'msg'=>$msg);
+				break;
+			default:
+				return array('code'=>-9,'msg'=>'Error Rule');
+				break;
+		}
+		return array('code'=>0);
+	}
+	private static function getErrMsg($key,$rule=null)
+	{
+		if($rule)
+		{
+			$arr_i=array_keys(self::$rule[$key],$rule);
+			$i=$arr_i[0];
+			if(count(self::$rule[$key])!=count(self::$msg[$key]))$i++;
+			$msg=isset(self::$msg[$key][$i])?self::$msg[$key][$i]:null;
+			return $msg;
+		}
+		else
+		{
+			if(count(self::$rule[$key])==count(self::$msg[$key]))
+			{
+				$err=self::$msg[$key][0]&&!self::$rule[$key][0]?self::$msg[$key][0]:'字段'.$key.'为必填项';
+			}
+			else
+			{
+				$err=self::$msg[$key][0]?self::$msg[$key][0]:'字段'.$key.'为必填项';
+			}
+			return $err;
+		}
+
+
+	}
+	private static function destruct($msg)
+	{
+		self::$rule=null;
+		self::$msg=null;
+		self::$data=null;
+		return $msg;
 	}
 	/**
 	 * 添加过滤规则
 	 */
-	public static function addRule($key,$rule)
+	public static function addRule($key,$msg=null,$rule=null)
 	{
-		self::$rule[]=array($key,$rule);
+		self::$rule[$key]=explode('|',$rule);
+		self::$msg[$key]=explode('|', $msg);
+	}
+	public static function addRules($arr=array())
+	{
+		foreach ($arr as $key)
+		{
+			self::addRule($key);
+		}
 	}
 	public static function email($email)
 	{
@@ -828,8 +1045,14 @@ class Validate
 	{
 		return preg_match('/^\d{15}(\d\d[0-9xX])?$/',$id);
 	}
+	//字母数字汉字,不能全是数字
+	public static function username($username)
+	{
+		if(is_numeric($username)) return false;
+		return preg_match('/^[\w\x{4e00}-\x{9fa5}]{3,20}$/u', $username);
+	}
 	//数字/大写字母/小写字母/标点符号组成，四种都必有，8位以上
-	public static function pass($pass)
+	public static function password($pass)
 	{
 		return preg_match('/^(?=^.{8,}$)(?=.*\d)(?=.*\W+)(?=.*[A-Z])(?=.*[a-z])(?!.*\n).*$/',$pass);
 	}
@@ -1046,37 +1269,40 @@ function session_get($key=null,$default=null)
 		return Request::session($key,$default);
 	}
 }
-//此处为设置session的方式,重写可将session迁移至redis等
 function session_set($key,$value=null)
 {
-	if(!isset($_SESSION))session_start();
+	session_start();
 	if(is_array($key))
 	{
 		foreach ($key as $k => $v)
 		{
-			$_SESSION[$k]=$v;
+			$_SESSION[$k]=is_array($v)?json_encode($v):$v;
 		}
-		return true;
+		return session_write_close();
 	}
 	else
 	{ 
-		return $_SESSION[$key]=is_array($value)?json_encode($value):$value;
+		$_SESSION[$key]=is_array($value)?json_encode($value):$value;
+		return session_write_close();
+
 	}
 }
 function session_del($key=null)
 {
-	if(!isset($_SESSION))session_start();
+	session_start();
 	if(is_array($key))
 	{
 		while(list($k,$v)=each($key))
 		{
 			unset($_SESSION[$v]);
 		}
-		return true;
+		return session_write_close();
+		
 	}
 	else if($key)
 	{
 		unset($_SESSION[$key]);
+		return session_write_close();
 	}
 	else
 	{
@@ -1124,7 +1350,7 @@ function baseUrl($path=null)
 	
 	if(is_string($path))
 	{
-		$path=$path[0]=='/'?$path:'/'.$path;
+		$path='/'.ltrim($path, '/');
 		return('http://'.$_SERVER['HTTP_HOST'].$path);
 	}
 	else if(is_null($path))
@@ -1138,6 +1364,20 @@ function baseUrl($path=null)
 	}
 
 }
+function encrypt($input,$key=null)
+{
+	return str_replace(array('+','/','='),array('-','_',''),base64_encode(mcrypt_encrypt(MCRYPT_RIJNDAEL_128,md5($key),$input,MCRYPT_MODE_ECB,mcrypt_create_iv(16))));
+}
+function decrypt($input,$key=null)
+{
+	$input=str_replace(array('-','_'), array('+','/'), $input);
+	if($mod=strlen($input)%4)
+	{
+		$input.=substr('====', $mod);
+	}
+	return trim(mcrypt_decrypt(MCRYPT_RIJNDAEL_128,md5($key),base64_decode($input),MCRYPT_MODE_ECB,mcrypt_create_iv(16)));
+}
+
 //发送邮件,用来替代原生mail,多个接受者用分号隔开
 function sendMail($mail_to, $mail_subject, $mail_message)
 {
@@ -1211,4 +1451,4 @@ function sendMail($mail_to, $mail_subject, $mail_message)
 
 
 
-// end file of core.php
+// end  of file core.php
