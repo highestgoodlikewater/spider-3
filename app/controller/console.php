@@ -31,7 +31,7 @@ class console
 	 */
 	function index()
 	{
-		V('qiniu/console');
+		V('qiniu/console/index');
 	}
 	function logout()
 	{
